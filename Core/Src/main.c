@@ -53,9 +53,9 @@ float PWMOut = 3000;
 uint8_t ADCUpdateFlag = 0;
 uint16_t ADCFeedBack = 0; // Store ADC Value
 float V = 0;
-float Kp = 0.65;
+float Kp = 0.65*1000;
 float Ki = 0;
-float Kd = 0.5;
+float Kd = 0.5*1000;
 float PID = 0;
 float error = 0;
 float error_pre = 0;
@@ -116,9 +116,9 @@ int main(void)
   MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
 
-	// ADC START - start �?บบ interrupt
+	// ADC START
 	HAL_ADC_Start_IT(&hadc1);
-	HAL_TIM_Base_Start(&htim3); //  start TIM3 ให้
+	HAL_TIM_Base_Start(&htim3); // start timer3
 
 	// START PWM
 	HAL_TIM_Base_Start(&htim1);
@@ -133,8 +133,6 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	while (1)
 	{
-//		V = ADCFeedBack*(PWMOut/10000)*(3.3/4096);
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -144,18 +142,21 @@ int main(void)
 		{
 			TimeOutputLoop = micros();
 			// #001
+			// Duty cycle = compare value/Period
+			// PWM = 1/ Period(s)
+
+			// V = ADC*PWM*(Vin/board)
+			V = ADCFeedBack*(PWMOut/10000)*(3.3/4096);
+			error = 1-ADCFeedBack*(PWMOut/10000)*(3.3/4096);
+			total_error += error;
+
+			// Kp*error(t) // ki [total error(t)] // Kd [error now - error pre]
+			PID = (Kp*error)+(Ki*total_error)+(Kd*(error-error_pre));
+			error_pre = error;
+			PWMOut += PID;
+
 			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, PWMOut); // Update Compare Value
 		}
-
-		V = ADCFeedBack*(PWMOut/10000.0)*(3.3/4096.0);
-		error = 1-ADCFeedBack*(PWMOut/10000.0)*(3.3/4096.0);
-		total_error += error;
-
-		// Kp*error(t) // ki [total error(t)] // Kd [error now - error pre]
-		PID = (Kp*error)+(Ki*total_error)+(Kd*(error-error_pre));
-		error_pre = error;
-
-		PWMOut += PID;
 
 		if (ADCUpdateFlag)
 		{
@@ -479,7 +480,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)  // ทุ�?ๆครั้งที่เ�?ิด Interrupt ให้เ�?็บค่าไว้ใน ADCFeedBack
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef *hadc)
 {
 	ADCFeedBack = HAL_ADC_GetValue(&hadc1);
 	ADCUpdateFlag = 1;
@@ -492,7 +493,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		_micro += 65535;
 	}
 }
-
 __inline__ uint64_t micros()
 {
 	return _micro + htim11.Instance->CNT;
